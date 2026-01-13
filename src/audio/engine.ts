@@ -1,70 +1,5 @@
 import type { NoiseType, NotchFilterConfig } from './types';
 
-// Worklet source as a string for dynamic loading
-const NOISE_PROCESSOR_CODE = `
-class NoiseProcessor extends AudioWorkletProcessor {
-  constructor(options) {
-    super();
-    this.noiseType = options?.processorOptions?.noiseType || 'brown';
-    this.brownLastOut = 0;
-    this.pinkB0 = 0;
-    this.pinkB1 = 0;
-    this.pinkB2 = 0;
-    this.pinkB3 = 0;
-    this.pinkB4 = 0;
-    this.pinkB5 = 0;
-    this.pinkB6 = 0;
-
-    this.port.onmessage = (event) => {
-      if (event.data.type === 'setNoiseType') {
-        this.noiseType = event.data.noiseType;
-      }
-    };
-  }
-
-  generateWhiteNoise() {
-    return Math.random() * 2 - 1;
-  }
-
-  generatePinkNoise() {
-    const white = this.generateWhiteNoise();
-    this.pinkB0 = 0.99886 * this.pinkB0 + white * 0.0555179;
-    this.pinkB1 = 0.99332 * this.pinkB1 + white * 0.0750759;
-    this.pinkB2 = 0.96900 * this.pinkB2 + white * 0.1538520;
-    this.pinkB3 = 0.86650 * this.pinkB3 + white * 0.3104856;
-    this.pinkB4 = 0.55000 * this.pinkB4 + white * 0.5329522;
-    this.pinkB5 = -0.7616 * this.pinkB5 - white * 0.0168980;
-    const output = (this.pinkB0 + this.pinkB1 + this.pinkB2 + this.pinkB3 + this.pinkB4 + this.pinkB5 + this.pinkB6 + white * 0.5362) * 0.11;
-    this.pinkB6 = white * 0.115926;
-    return output;
-  }
-
-  generateBrownNoise() {
-    const white = this.generateWhiteNoise();
-    this.brownLastOut = (this.brownLastOut + 0.02 * white) / 1.02;
-    return this.brownLastOut * 3.5;
-  }
-
-  process(inputs, outputs, parameters) {
-    const output = outputs[0];
-    for (let channel = 0; channel < output.length; channel++) {
-      const outputChannel = output[channel];
-      for (let i = 0; i < outputChannel.length; i++) {
-        let sample;
-        switch (this.noiseType) {
-          case 'white': sample = this.generateWhiteNoise(); break;
-          case 'pink': sample = this.generatePinkNoise(); break;
-          case 'brown': default: sample = this.generateBrownNoise(); break;
-        }
-        outputChannel[i] = sample;
-      }
-    }
-    return true;
-  }
-}
-registerProcessor('noise-processor', NoiseProcessor);
-`;
-
 export class AudioEngine {
   private audioContext: AudioContext | null = null;
   private noiseNode: AudioWorkletNode | null = null;
@@ -90,15 +25,8 @@ export class AudioEngine {
 
     this.audioContext = new AudioContext();
 
-    // Create and load worklet from blob
-    const blob = new Blob([NOISE_PROCESSOR_CODE], { type: 'application/javascript' });
-    const workletUrl = URL.createObjectURL(blob);
-
-    try {
-      await this.audioContext.audioWorklet.addModule(workletUrl);
-    } finally {
-      URL.revokeObjectURL(workletUrl);
-    }
+    // Load worklet from static file (better iOS Safari compatibility)
+    await this.audioContext.audioWorklet.addModule('/noise-processor.js');
 
     // Create noise worklet node
     this.noiseNode = new AudioWorkletNode(this.audioContext, 'noise-processor', {
