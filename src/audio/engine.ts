@@ -8,6 +8,10 @@ export class AudioEngine {
   private frequencyFilter: BiquadFilterNode | null = null;
   private analyser: AnalyserNode | null = null;
 
+  private hasUnlockedIOSAudio = false;
+  private silentMediaElement: HTMLAudioElement | null = null;
+  private silentMediaPlayPromise: Promise<boolean> | null = null;
+
   // Binaural beat oscillators
   private binauralLeft: OscillatorNode | null = null;
   private binauralRight: OscillatorNode | null = null;
@@ -19,6 +23,79 @@ export class AudioEngine {
 
   private isInitialized = false;
   private currentNoiseType: NoiseType = 'brown';
+
+  private isAppleMobile(): boolean {
+    if (typeof navigator === 'undefined' || typeof window === 'undefined') return false;
+    const ua = navigator.userAgent || '';
+    const isIOS = /iPad|iPhone|iPod/.test(ua);
+    const isIPadOS = ua.includes('Macintosh') && 'ontouchend' in window;
+    return isIOS || isIPadOS;
+  }
+
+  private trySetAudioSessionPlayback(): boolean {
+    if (typeof navigator === 'undefined') return false;
+    const nav = navigator as Navigator & {
+      audioSession?: {
+        type: string;
+      };
+    };
+
+    if (!nav.audioSession) return false;
+    try {
+      nav.audioSession.type = 'playback';
+      return nav.audioSession.type === 'playback';
+    } catch (err) {
+      console.warn('[AudioEngine] Failed to set audioSession.type:', err);
+      return false;
+    }
+  }
+
+  private async startSilentMediaElement(): Promise<boolean> {
+    if (this.silentMediaElement) return true;
+    if (typeof window === 'undefined') return false;
+
+    if (this.silentMediaPlayPromise) return this.silentMediaPlayPromise;
+
+    const silentAudio = new Audio();
+    silentAudio.src =
+      'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAgLsAAAB3AQACABAAZGF0YQAAAAA=';
+    silentAudio.loop = true;
+    silentAudio.preload = 'auto';
+    silentAudio.playsInline = true;
+    silentAudio.setAttribute('playsinline', '');
+    silentAudio.volume = 0;
+
+    this.silentMediaPlayPromise = silentAudio
+      .play()
+      .then(() => {
+        this.silentMediaElement = silentAudio;
+        return true;
+      })
+      .catch((err) => {
+        console.warn('[AudioEngine] Silent media playback failed:', err);
+        return false;
+      })
+      .finally(() => {
+        this.silentMediaPlayPromise = null;
+      });
+
+    return this.silentMediaPlayPromise;
+  }
+
+  private async ensureIOSPlaybackSession(): Promise<void> {
+    if (this.hasUnlockedIOSAudio || !this.isAppleMobile()) return;
+
+    const hasAudioSession = this.trySetAudioSessionPlayback();
+    if (hasAudioSession) {
+      this.hasUnlockedIOSAudio = true;
+      return;
+    }
+
+    const silentMediaStarted = await this.startSilentMediaElement();
+    if (silentMediaStarted) {
+      this.hasUnlockedIOSAudio = true;
+    }
+  }
 
   async initialize(): Promise<void> {
     if (this.isInitialized) return;
@@ -85,6 +162,7 @@ export class AudioEngine {
   }
 
   async play(): Promise<void> {
+    await this.ensureIOSPlaybackSession();
     console.log('[AudioEngine] play() called. Has context:', !!this.audioContext);
     if (!this.audioContext) {
       await this.initialize();
@@ -298,6 +376,15 @@ export class AudioEngine {
     this.disableBinaural();
     this.notchFilters.forEach((filter) => filter.disconnect());
     this.notchFilters.clear();
+
+    if (this.silentMediaElement) {
+      this.silentMediaElement.pause();
+      this.silentMediaElement.src = '';
+      this.silentMediaElement.load();
+      this.silentMediaElement = null;
+    }
+    this.silentMediaPlayPromise = null;
+    this.hasUnlockedIOSAudio = false;
 
     if (this.audioContext) {
       this.audioContext.close();

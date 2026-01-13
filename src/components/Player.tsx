@@ -1,5 +1,8 @@
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useState } from 'react';
 import { useAudioEngine } from '../hooks/useAudioEngine';
+
+// Detect iOS (iPhone, iPad, iPod)
+const isIOS = typeof navigator !== 'undefined' && /iPad|iPhone|iPod/.test(navigator.userAgent);
 import { PlayButton } from './controls/PlayButton';
 import { VolumeSlider } from './controls/VolumeSlider';
 import { NoiseTypeSelector } from './controls/NoiseTypeSelector';
@@ -29,6 +32,18 @@ export function Player() {
     savePreset,
     deletePreset,
   } = useAudioEngine();
+
+  // Show iOS mute switch hint when playing
+  const [showIOSHint, setShowIOSHint] = useState(false);
+
+  useEffect(() => {
+    if (isIOS && state.isPlaying) {
+      setShowIOSHint(true);
+      // Hide after 8 seconds
+      const timer = setTimeout(() => setShowIOSHint(false), 8000);
+      return () => clearTimeout(timer);
+    }
+  }, [state.isPlaying]);
 
   // Keyboard shortcuts
   const handleKeyDown = useCallback(
@@ -92,6 +107,21 @@ export function Player() {
               wordBreak: 'break-word'
             }}>
               Audio error: {error}
+            </div>
+          )}
+          {showIOSHint && (
+            <div style={{
+              marginTop: '1rem',
+              padding: '0.75rem 1rem',
+              background: 'rgba(255, 200, 100, 0.15)',
+              border: '1px solid rgba(255, 200, 100, 0.3)',
+              borderRadius: '8px',
+              color: 'rgba(255, 220, 150, 0.9)',
+              fontSize: '0.875rem',
+              maxWidth: '280px',
+              textAlign: 'center'
+            }}>
+              No sound? Check your mute switch on the side of your device
             </div>
           )}
         </div>
