@@ -1,0 +1,381 @@
+import type { NoiseType, NotchFilterConfig } from './types';
+
+// Worklet source as a string for dynamic loading
+const NOISE_PROCESSOR_CODE = `
+class NoiseProcessor extends AudioWorkletProcessor {
+  constructor(options) {
+    super();
+    this.noiseType = options?.processorOptions?.noiseType || 'brown';
+    this.brownLastOut = 0;
+    this.pinkB0 = 0;
+    this.pinkB1 = 0;
+    this.pinkB2 = 0;
+    this.pinkB3 = 0;
+    this.pinkB4 = 0;
+    this.pinkB5 = 0;
+    this.pinkB6 = 0;
+
+    this.port.onmessage = (event) => {
+      if (event.data.type === 'setNoiseType') {
+        this.noiseType = event.data.noiseType;
+      }
+    };
+  }
+
+  generateWhiteNoise() {
+    return Math.random() * 2 - 1;
+  }
+
+  generatePinkNoise() {
+    const white = this.generateWhiteNoise();
+    this.pinkB0 = 0.99886 * this.pinkB0 + white * 0.0555179;
+    this.pinkB1 = 0.99332 * this.pinkB1 + white * 0.0750759;
+    this.pinkB2 = 0.96900 * this.pinkB2 + white * 0.1538520;
+    this.pinkB3 = 0.86650 * this.pinkB3 + white * 0.3104856;
+    this.pinkB4 = 0.55000 * this.pinkB4 + white * 0.5329522;
+    this.pinkB5 = -0.7616 * this.pinkB5 - white * 0.0168980;
+    const output = (this.pinkB0 + this.pinkB1 + this.pinkB2 + this.pinkB3 + this.pinkB4 + this.pinkB5 + this.pinkB6 + white * 0.5362) * 0.11;
+    this.pinkB6 = white * 0.115926;
+    return output;
+  }
+
+  generateBrownNoise() {
+    const white = this.generateWhiteNoise();
+    this.brownLastOut = (this.brownLastOut + 0.02 * white) / 1.02;
+    return this.brownLastOut * 3.5;
+  }
+
+  process(inputs, outputs, parameters) {
+    const output = outputs[0];
+    for (let channel = 0; channel < output.length; channel++) {
+      const outputChannel = output[channel];
+      for (let i = 0; i < outputChannel.length; i++) {
+        let sample;
+        switch (this.noiseType) {
+          case 'white': sample = this.generateWhiteNoise(); break;
+          case 'pink': sample = this.generatePinkNoise(); break;
+          case 'brown': default: sample = this.generateBrownNoise(); break;
+        }
+        outputChannel[i] = sample;
+      }
+    }
+    return true;
+  }
+}
+registerProcessor('noise-processor', NoiseProcessor);
+`;
+
+export class AudioEngine {
+  private audioContext: AudioContext | null = null;
+  private noiseNode: AudioWorkletNode | null = null;
+  private noiseGain: GainNode | null = null;
+  private masterGain: GainNode | null = null;
+  private frequencyFilter: BiquadFilterNode | null = null;
+  private analyser: AnalyserNode | null = null;
+
+  // Binaural beat oscillators
+  private binauralLeft: OscillatorNode | null = null;
+  private binauralRight: OscillatorNode | null = null;
+  private binauralGain: GainNode | null = null;
+  private binauralMerger: ChannelMergerNode | null = null;
+
+  // Notch filters
+  private notchFilters: Map<string, BiquadFilterNode> = new Map();
+
+  private isInitialized = false;
+  private currentNoiseType: NoiseType = 'brown';
+
+  async initialize(): Promise<void> {
+    if (this.isInitialized) return;
+
+    this.audioContext = new AudioContext();
+
+    // Create and load worklet from blob
+    const blob = new Blob([NOISE_PROCESSOR_CODE], { type: 'application/javascript' });
+    const workletUrl = URL.createObjectURL(blob);
+
+    try {
+      await this.audioContext.audioWorklet.addModule(workletUrl);
+    } finally {
+      URL.revokeObjectURL(workletUrl);
+    }
+
+    // Create noise worklet node
+    this.noiseNode = new AudioWorkletNode(this.audioContext, 'noise-processor', {
+      processorOptions: { noiseType: this.currentNoiseType },
+    });
+
+    // Create gain nodes
+    this.noiseGain = this.audioContext.createGain();
+    this.noiseGain.gain.value = 1;
+
+    this.masterGain = this.audioContext.createGain();
+    this.masterGain.gain.value = 0.5;
+
+    // Create frequency filter (lowpass for brightness control)
+    this.frequencyFilter = this.audioContext.createBiquadFilter();
+    this.frequencyFilter.type = 'lowpass';
+    this.frequencyFilter.frequency.value = 1000;
+    this.frequencyFilter.Q.value = 0.7;
+
+    // Create analyser for visualization
+    this.analyser = this.audioContext.createAnalyser();
+    this.analyser.fftSize = 256;
+
+    // Create binaural beat components
+    this.binauralGain = this.audioContext.createGain();
+    this.binauralGain.gain.value = 0;
+
+    this.binauralMerger = this.audioContext.createChannelMerger(2);
+
+    // Connect noise path: NoiseNode -> NoiseGain -> FrequencyFilter -> MasterGain -> Destination
+    this.noiseNode.connect(this.noiseGain);
+    this.noiseGain.connect(this.frequencyFilter);
+    // Notch filters will be inserted between frequencyFilter and masterGain
+    this.frequencyFilter.connect(this.masterGain);
+
+    // Connect binaural to master (will be set up when enabled)
+    this.binauralMerger.connect(this.binauralGain);
+    this.binauralGain.connect(this.masterGain);
+
+    // Connect master to destination and analyser
+    this.masterGain.connect(this.analyser);
+    this.analyser.connect(this.audioContext.destination);
+
+    this.isInitialized = true;
+  }
+
+  async play(): Promise<void> {
+    if (!this.audioContext) {
+      await this.initialize();
+    }
+
+    if (this.audioContext?.state === 'suspended') {
+      await this.audioContext.resume();
+    }
+  }
+
+  async pause(): Promise<void> {
+    if (this.audioContext?.state === 'running') {
+      await this.audioContext.suspend();
+    }
+  }
+
+  async toggle(): Promise<boolean> {
+    if (!this.audioContext) {
+      await this.initialize();
+      await this.play();
+      return true;
+    }
+
+    if (this.audioContext.state === 'running') {
+      await this.pause();
+      return false;
+    } else {
+      await this.play();
+      return true;
+    }
+  }
+
+  setVolume(volume: number): void {
+    if (this.masterGain) {
+      this.masterGain.gain.setTargetAtTime(
+        Math.max(0, Math.min(1, volume)),
+        this.audioContext?.currentTime || 0,
+        0.02
+      );
+    }
+  }
+
+  setNoiseType(type: NoiseType): void {
+    this.currentNoiseType = type;
+    if (this.noiseNode) {
+      this.noiseNode.port.postMessage({ type: 'setNoiseType', noiseType: type });
+    }
+  }
+
+  setFrequency(frequency: number): void {
+    if (this.frequencyFilter && this.audioContext) {
+      this.frequencyFilter.frequency.setTargetAtTime(
+        Math.max(100, Math.min(20000, frequency)),
+        this.audioContext.currentTime,
+        0.02
+      );
+    }
+  }
+
+  // Binaural beats methods
+  enableBinaural(baseFrequency: number, beatFrequency: number, volume: number): void {
+    if (!this.audioContext || !this.binauralMerger || !this.binauralGain) return;
+
+    // Stop existing oscillators
+    this.disableBinaural();
+
+    // Create new oscillators
+    this.binauralLeft = this.audioContext.createOscillator();
+    this.binauralRight = this.audioContext.createOscillator();
+
+    this.binauralLeft.type = 'sine';
+    this.binauralRight.type = 'sine';
+
+    this.binauralLeft.frequency.value = baseFrequency;
+    this.binauralRight.frequency.value = baseFrequency + beatFrequency;
+
+    // Create gain nodes for each channel
+    const leftGain = this.audioContext.createGain();
+    const rightGain = this.audioContext.createGain();
+    leftGain.gain.value = 1;
+    rightGain.gain.value = 1;
+
+    // Connect: Left oscillator -> left channel, Right oscillator -> right channel
+    this.binauralLeft.connect(leftGain);
+    this.binauralRight.connect(rightGain);
+    leftGain.connect(this.binauralMerger, 0, 0);
+    rightGain.connect(this.binauralMerger, 0, 1);
+
+    // Set binaural volume
+    this.binauralGain.gain.setTargetAtTime(volume, this.audioContext.currentTime, 0.02);
+
+    // Start oscillators
+    this.binauralLeft.start();
+    this.binauralRight.start();
+  }
+
+  disableBinaural(): void {
+    if (this.binauralLeft) {
+      this.binauralLeft.stop();
+      this.binauralLeft.disconnect();
+      this.binauralLeft = null;
+    }
+    if (this.binauralRight) {
+      this.binauralRight.stop();
+      this.binauralRight.disconnect();
+      this.binauralRight = null;
+    }
+    if (this.binauralGain && this.audioContext) {
+      this.binauralGain.gain.setTargetAtTime(0, this.audioContext.currentTime, 0.02);
+    }
+  }
+
+  setBinauralBeatFrequency(beatFrequency: number): void {
+    if (this.binauralRight && this.binauralLeft && this.audioContext) {
+      const baseFreq = this.binauralLeft.frequency.value;
+      this.binauralRight.frequency.setTargetAtTime(
+        baseFreq + beatFrequency,
+        this.audioContext.currentTime,
+        0.02
+      );
+    }
+  }
+
+  setBinauralVolume(volume: number): void {
+    if (this.binauralGain && this.audioContext) {
+      this.binauralGain.gain.setTargetAtTime(
+        Math.max(0, Math.min(1, volume)),
+        this.audioContext.currentTime,
+        0.02
+      );
+    }
+  }
+
+  // Notch filter methods
+  addNotchFilter(config: NotchFilterConfig): void {
+    if (!this.audioContext || !this.frequencyFilter || !this.masterGain) return;
+
+    const notch = this.audioContext.createBiquadFilter();
+    notch.type = 'notch';
+    notch.frequency.value = config.frequency;
+    notch.Q.value = config.q;
+
+    this.notchFilters.set(config.id, notch);
+    this.rebuildFilterChain();
+  }
+
+  removeNotchFilter(id: string): void {
+    const filter = this.notchFilters.get(id);
+    if (filter) {
+      filter.disconnect();
+      this.notchFilters.delete(id);
+      this.rebuildFilterChain();
+    }
+  }
+
+  updateNotchFilter(id: string, config: Partial<NotchFilterConfig>): void {
+    const filter = this.notchFilters.get(id);
+    if (filter && this.audioContext) {
+      if (config.frequency !== undefined) {
+        filter.frequency.setTargetAtTime(config.frequency, this.audioContext.currentTime, 0.02);
+      }
+      if (config.q !== undefined) {
+        filter.Q.setTargetAtTime(config.q, this.audioContext.currentTime, 0.02);
+      }
+    }
+  }
+
+  private rebuildFilterChain(): void {
+    if (!this.frequencyFilter || !this.masterGain) return;
+
+    // Disconnect existing chain
+    this.frequencyFilter.disconnect();
+    this.notchFilters.forEach((filter) => filter.disconnect());
+
+    // Rebuild chain
+    let lastNode: AudioNode = this.frequencyFilter;
+    this.notchFilters.forEach((filter) => {
+      lastNode.connect(filter);
+      lastNode = filter;
+    });
+    lastNode.connect(this.masterGain);
+  }
+
+  // Visualization
+  getAnalyserNode(): AnalyserNode | null {
+    return this.analyser;
+  }
+
+  getFrequencyData(): Uint8Array {
+    if (!this.analyser) return new Uint8Array(0);
+    const data = new Uint8Array(this.analyser.frequencyBinCount);
+    this.analyser.getByteFrequencyData(data);
+    return data;
+  }
+
+  getTimeDomainData(): Uint8Array {
+    if (!this.analyser) return new Uint8Array(0);
+    const data = new Uint8Array(this.analyser.frequencyBinCount);
+    this.analyser.getByteTimeDomainData(data);
+    return data;
+  }
+
+  isPlaying(): boolean {
+    return this.audioContext?.state === 'running';
+  }
+
+  dispose(): void {
+    this.disableBinaural();
+    this.notchFilters.forEach((filter) => filter.disconnect());
+    this.notchFilters.clear();
+
+    if (this.audioContext) {
+      this.audioContext.close();
+      this.audioContext = null;
+    }
+
+    this.noiseNode = null;
+    this.noiseGain = null;
+    this.masterGain = null;
+    this.frequencyFilter = null;
+    this.analyser = null;
+    this.isInitialized = false;
+  }
+}
+
+// Singleton instance
+let engineInstance: AudioEngine | null = null;
+
+export function getAudioEngine(): AudioEngine {
+  if (!engineInstance) {
+    engineInstance = new AudioEngine();
+  }
+  return engineInstance;
+}
