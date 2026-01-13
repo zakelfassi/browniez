@@ -12,6 +12,7 @@ import { Waveform } from './visualizer/Waveform';
 export function Player() {
   const {
     state,
+    error,
     presets,
     toggle,
     setVolume,
@@ -78,6 +79,21 @@ export function Player() {
             isLoading={state.isLoading}
             onToggle={toggle}
           />
+          {error && (
+            <div style={{
+              marginTop: '1rem',
+              padding: '0.75rem 1rem',
+              background: 'rgba(255, 100, 100, 0.2)',
+              border: '1px solid rgba(255, 100, 100, 0.4)',
+              borderRadius: '8px',
+              color: '#ff9999',
+              fontSize: '0.875rem',
+              maxWidth: '300px',
+              wordBreak: 'break-word'
+            }}>
+              Audio error: {error}
+            </div>
+          )}
         </div>
 
         {/* Controls Grid */}

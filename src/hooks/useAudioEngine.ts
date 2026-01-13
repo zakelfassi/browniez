@@ -92,8 +92,11 @@ export function useAudioEngine() {
     };
   }, []);
 
+  const [error, setError] = useState<string | null>(null);
+
   const toggle = useCallback(async () => {
     setState((s) => ({ ...s, isLoading: true }));
+    setError(null);
     try {
       const engine = engineRef.current;
       const isPlaying = await engine.toggle();
@@ -122,8 +125,10 @@ export function useAudioEngine() {
       }
 
       setState((s) => ({ ...s, isPlaying, isLoading: false }));
-    } catch (error) {
-      console.error('Audio engine error:', error);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error('Audio engine error:', err);
+      setError(message);
       setState((s) => ({ ...s, isLoading: false }));
     }
   }, [state]);
@@ -284,6 +289,7 @@ export function useAudioEngine() {
 
   return {
     state,
+    error,
     presets: allPresets,
     customPresets,
     toggle,
