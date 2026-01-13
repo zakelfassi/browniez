@@ -267,6 +267,103 @@
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
+   Signature
+   ───────────────────────────────────────────────────────────────────────────── */
+.signature {
+  margin-top: var(--space-xl);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-md);
+}
+
+.signature__divider {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  width: 100%;
+  max-width: 200px;
+}
+
+.signature__divider::before,
+.signature__divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--color-ocean-light),
+    transparent
+  );
+}
+
+.signature__wave {
+  color: var(--color-teal);
+  font-size: 1.25rem;
+  opacity: 0.6;
+  animation: waveFloat 3s ease-in-out infinite;
+}
+
+@keyframes waveFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+
+.signature__intro {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--color-text-dim);
+  text-align: center;
+  max-width: 320px;
+  line-height: 1.5;
+  letter-spacing: 0.01em;
+}
+
+.signature__link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: var(--space-sm) var(--space-md);
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  text-decoration: none;
+  transition: all 0.3s var(--ease-out);
+}
+
+.signature__link:hover {
+  border-color: var(--color-amber);
+  background: rgba(255, 159, 67, 0.05);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 20px rgba(255, 159, 67, 0.15);
+}
+
+.signature__name {
+  font-family: var(--font-display);
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--color-text-muted);
+  transition: color 0.3s ease;
+}
+
+.signature__link:hover .signature__name {
+  color: var(--color-amber);
+}
+
+.signature__arrow {
+  width: 14px;
+  height: 14px;
+  color: var(--color-text-dim);
+  transition: all 0.3s var(--ease-out);
+}
+
+.signature__link:hover .signature__arrow {
+  color: var(--color-amber);
+  transform: translate(2px, -2px);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
    Play Button
    ───────────────────────────────────────────────────────────────────────────── */
 .play-button {
