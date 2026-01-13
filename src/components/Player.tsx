@@ -1,3 +1,4 @@
+import { useEffect, useCallback } from 'react';
 import { useAudioEngine } from '../hooks/useAudioEngine';
 import { PlayButton } from './controls/PlayButton';
 import { VolumeSlider } from './controls/VolumeSlider';
@@ -27,6 +28,25 @@ export function Player() {
     savePreset,
     deletePreset,
   } = useAudioEngine();
+
+  // Keyboard shortcuts
+  const handleKeyDown = useCallback(
+    (e: KeyboardEvent) => {
+      if (
+        e.code === 'Space' &&
+        !['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)
+      ) {
+        e.preventDefault();
+        toggle();
+      }
+    },
+    [toggle]
+  );
+
+  useEffect(() => {
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleKeyDown]);
 
   return (
     <div className="player">

@@ -68,6 +68,7 @@ function saveCustomPresets(presets: Preset[]): void {
 
 export function useAudioEngine() {
   const engineRef = useRef(getAudioEngine());
+  const hasInitializedRef = useRef(false);
   const [state, setState] = useState<AudioEngineState>(() => ({
     ...DEFAULT_ENGINE_STATE,
     ...loadSettings(),
@@ -97,8 +98,10 @@ export function useAudioEngine() {
       const engine = engineRef.current;
       const isPlaying = await engine.toggle();
 
-      // Apply current settings when starting
-      if (isPlaying) {
+      // Only apply settings on first initialization, not on resume
+      if (isPlaying && !hasInitializedRef.current) {
+        hasInitializedRef.current = true;
+
         engine.setVolume(state.volume);
         engine.setNoiseType(state.noiseType);
         engine.setFrequency(state.frequency);
