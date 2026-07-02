@@ -1,6 +1,10 @@
 # Browniez
 
-A brown noise generator web app designed for tinnitus relief and focus enhancement. Features customizable noise types, binaural beats, and notch filtering.
+Browniez is a web noise generator for tinnitus relief and focus through engineered noise. It combines white, pink, and brown noise with optional binaural beats, frequency shaping, and notch filters in a lightweight browser app.
+
+Try it live: [browniez.zakelfassi.com](https://browniez.zakelfassi.com)
+
+> Screenshot placeholder: add an app screenshot here before publishing a polished project page.
 
 ## Features
 
@@ -16,6 +20,12 @@ A brown noise generator web app designed for tinnitus relief and focus enhanceme
 - **Real-time Visualizer**: Waveform display of audio output
 - **Keyboard Shortcuts**: Space to play/pause
 - **Persistent Settings**: All configurations saved to localStorage
+
+## How it works
+
+Browniez runs entirely in the browser using the Web Audio API. White noise has equal energy across frequencies, pink noise rolls off with a gentler spectrum, and brown noise emphasizes lower frequencies for a deeper, softer sound. Binaural beats send slightly different sine tones to each ear, creating a perceived beat frequency when using headphones. Notch filters attenuate selected frequency bands, which can be useful when experimenting with tinnitus masking or personal comfort settings.
+
+Browniez is not medical advice or a medical device. Use comfortable volumes and consult a clinician for persistent tinnitus or hearing concerns.
 
 ## Tech Stack
 
@@ -39,7 +49,7 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 |---------|-------------|
 | `pnpm dev` | Start development server |
 | `pnpm build` | Build for production |
-| `pnpm start` | Run production build |
+| `pnpm preview` | Preview the production build |
 | `pnpm test` | Run tests |
 
 ## Usage Tips
@@ -73,4 +83,6 @@ src/
 
 ## License
 
-MIT
+MIT © Zak El Fassi
+
+Part of the agentic software factory stack → [zakelfassi.com/labs](https://zakelfassi.com/labs)

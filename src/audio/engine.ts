@@ -100,26 +100,20 @@ export class AudioEngine {
   async initialize(): Promise<void> {
     if (this.isInitialized) return;
 
-    console.log('[AudioEngine] Step 1: Creating AudioContext...');
     this.audioContext = new AudioContext();
-    console.log('[AudioEngine] Step 1 done. State:', this.audioContext.state, 'Sample rate:', this.audioContext.sampleRate);
 
     // Load worklet from static file (better iOS Safari compatibility)
-    console.log('[AudioEngine] Step 2: Loading AudioWorklet module...');
     try {
       await this.audioContext.audioWorklet.addModule('/noise-processor.js');
-      console.log('[AudioEngine] Step 2 done. Worklet loaded.');
     } catch (e) {
-      console.error('[AudioEngine] Step 2 FAILED:', e);
+      console.error('[AudioEngine] Failed to load AudioWorklet module:', e);
       throw e;
     }
 
     // Create noise worklet node
-    console.log('[AudioEngine] Step 3: Creating AudioWorkletNode...');
     this.noiseNode = new AudioWorkletNode(this.audioContext, 'noise-processor', {
       processorOptions: { noiseType: this.currentNoiseType },
     });
-    console.log('[AudioEngine] Step 3 done. Node created.');
 
     // Create gain nodes
     this.noiseGain = this.audioContext.createGain();
@@ -163,16 +157,12 @@ export class AudioEngine {
 
   async play(): Promise<void> {
     await this.ensureIOSPlaybackSession();
-    console.log('[AudioEngine] play() called. Has context:', !!this.audioContext);
     if (!this.audioContext) {
       await this.initialize();
     }
 
-    console.log('[AudioEngine] Context state before resume:', this.audioContext?.state);
     if (this.audioContext?.state === 'suspended') {
-      console.log('[AudioEngine] Calling resume()...');
       await this.audioContext.resume();
-      console.log('[AudioEngine] resume() done. State:', this.audioContext.state);
     }
   }
 

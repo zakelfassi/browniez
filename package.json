@@ -1,6 +1,14 @@
 {
   "name": "browniez",
+  "description": "A web noise generator for tinnitus relief and focus using engineered noise, binaural beats, and notch filters.",
   "private": true,
+  "license": "MIT",
+  "author": "Zak El Fassi",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zakelfassi/browniez.git"
+  },
+  "homepage": "https://browniez.zakelfassi.com",
   "type": "module",
   "scripts": {
     "dev": "vite dev --port 3000",
