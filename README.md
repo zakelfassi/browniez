@@ -1,3 +1,5 @@
+> **Archived — no longer maintained.** Existing source remains available; no new features or support are planned.
+
 # Browniez
 
 Browniez is a web noise generator for tinnitus relief and focus through engineered noise. It combines white, pink, and brown noise with optional binaural beats, frequency shaping, and notch filters in a lightweight browser app.
